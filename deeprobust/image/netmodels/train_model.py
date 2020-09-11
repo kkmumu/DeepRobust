@@ -42,11 +42,12 @@ def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, 
     torch.manual_seed(seed)
 
     train_loader, test_loader = feed_dataset(data, data_path)
+    device = torch.device("cuda:0")
 
     if (model == 'CNN'):
         import deeprobust.image.netmodels.CNN as MODEL
         #from deeprobust.image.netmodels.CNN import Net
-        train_net = MODEL.Net().to(device)
+        train_net = MODEL.Net().to(device = device)
 
     elif (model == 'ResNet18'):
         import deeprobust.image.netmodels.resnet as MODEL
