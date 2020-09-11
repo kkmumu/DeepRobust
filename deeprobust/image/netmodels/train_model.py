@@ -51,32 +51,32 @@ def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, 
 
     elif (model == 'ResNet18'):
         import deeprobust.image.netmodels.resnet as MODEL
-        train_net = MODEL.ResNet18().to(device)
+        train_net = MODEL.ResNet18().to(device = device)
 
     elif (model == 'ResNet34'):
         import deeprobust.image.netmodels.resnet as MODEL
-        train_net = MODEL.ResNet34().to(device)
+        train_net = MODEL.ResNet34().to(device = device)
 
     elif (model == 'ResNet50'):
         import deeprobust.image.netmodels.resnet as MODEL
-        train_net = MODEL.ResNet50().to(device)
+        train_net = MODEL.ResNet50().to(device = device)
 
     elif (model == 'densenet'):
         import deeprobust.image.netmodels.densenet as MODEL
-        train_net = MODEL.densenet_cifar().to(device)
+        train_net = MODEL.densenet_cifar().to(device = device)
 
     elif (model == 'vgg11'):
         import deeprobust.image.netmodels.vgg as MODEL
-        train_net = MODEL.VGG('VGG11').to(device)
+        train_net = MODEL.VGG('VGG11').to(device = device)
     elif (model == 'vgg13'):
         import deeprobust.image.netmodels.vgg as MODEL
-        train_net = MODEL.VGG('VGG13').to(device)
+        train_net = MODEL.VGG('VGG13').to(device = device)
     elif (model == 'vgg16'):
         import deeprobust.image.netmodels.vgg as MODEL
-        train_net = MODEL.VGG('VGG16').to(device)
+        train_net = MODEL.VGG('VGG16').to(device = device)
     elif (model == 'vgg19'):
         import deeprobust.image.netmodels.vgg as MODEL
-        train_net = MODEL.VGG('VGG19').to(device)
+        train_net = MODEL.VGG('VGG19').to(device = device)
 
 
 
