@@ -125,37 +125,3 @@ def test(model, device, test_loader):
         100. * correct / len(test_loader.dataset)))
     
     return test_loss*len(test_loader.dataset)
-
-def generalization(model,device,train_loader,test_loader,optimizer, epoch):
-    """measure generalization error.
-
-    Parameters
-    ----------
-    model :
-        model
-    device :
-        device(option:'cpu', 'cuda')
-    test_loader :
-        testing data loader
-    train_loader :
-        training data loader
-    optimizer :
-        optimizer
-    epoch :
-        epoch
-    """
-    train_loss = train(model, device, train_loader, optimizer, epoch)
-    test_loss = test(model, device, test_loader)
-    total_loss = train_loss + test_loss
-    expected_error = total_loss / (len(test_loader.dataset)+len(train_loader.dataset))
-    empirical_error = train_loss/len(train_loader.dataset)
-    print("========Expected Error========")
-    print('Expected Error over the whole set: {:.4f}'.format(expected_error))
-          
-    print("========Empirical Error========")
-    print('Empirical Error over the training set: {:.4f}'.format(empirical_error))
-          
-    print("========Generalization Error========")
-    print('Generalization Error: {:.4f}'.format(abs(expected_error-empirical_error)))
-    
-
