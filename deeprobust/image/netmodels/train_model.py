@@ -1,146 +1,280 @@
-"""
-This function help to train model of different archtecture easily. Select model archtecture and training data, then output corresponding model.
-
-"""
-from __future__ import print_function
-import os
-import argparse
+import requests
 import torch
-import torch.nn as nn
-import torch.nn.functional as F #233
-import torch.optim as optim
-from torchvision import datasets, transforms
+from torchvision import datasets,models,transforms
+import torch.nn.functional as F
+import os
+
 import numpy as np
-from PIL import Image
+import argparse
+import matplotlib.pyplot as plt
+import random
 
-def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, seed = 100):
-    """train.
+from deeprobust.image import utils
 
-    Parameters
-    ----------
-    model :
-        model(option:'CNN', 'ResNet18', 'ResNet34', 'ResNet50', 'densenet', 'vgg11', 'vgg13', 'vgg16', 'vgg19')
-    data :
-        data(option:'MNIST','CIFAR10')
-    device :
-        device(option:'cpu', 'cuda')
-    maxepoch :
-        training epoch
-    data_path :
-        data path(default = './')
-    save_per_epoch :
-        save_per_epoch(default = 10)
-    seed :
-        seed
+def run_attack(attackmethod, batch_size, batch_num, device, train_loader, test_loader, random_targeted = False, target_label = -1, **kwargs):
+    test_loss = 0
+    train_loss = 0
+    correct = 0
+    samplenum = 1000
+    count = 0
+    classnum = 10
     
-    Examples
-    --------
-    >>>import deeprobust.image.netmodels.train_model as trainmodel
-    >>>trainmodel.train('CNN', 'MNIST', 'cuda', 20)
-    """
+    # calculate adversarial attack error
+    for count, (data, target) in enumerate(test_loader):
+        if count == batch_num:
+            break
+        print('batch:{}'.format(count))
 
-    torch.manual_seed(seed)
+        data, target = data.to(device), target.to(device)
+        if(random_targeted == True):
+            r = list(range(0, target)) + list(range(target+1, classnum))
+            target_label = random.choice(r)
+            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
 
-    train_loader, test_loader = feed_dataset(data, data_path)
-    device = torch.device("cuda:0")
+        elif(target_label >= 0):
+            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
 
-    if (model == 'CNN'):
-        import deeprobust.image.netmodels.CNN as MODEL
-        #from deeprobust.image.netmodels.CNN import Net
-        train_net = MODEL.Net().to(device = device)
+        else:
+            adv_example = attackmethod.generate(data, target, **kwargs)
 
-    elif (model == 'ResNet18'):
-        import deeprobust.image.netmodels.resnet as MODEL
-        train_net = MODEL.ResNet18().to(device = device)
+        output = model(adv_example)
+        test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
 
-    elif (model == 'ResNet34'):
-        import deeprobust.image.netmodels.resnet as MODEL
-        train_net = MODEL.ResNet34().to(device = device)
+        pred = output.argmax(dim = 1, keepdim = True)  # get the index of the max log-probability.
 
-    elif (model == 'ResNet50'):
-        import deeprobust.image.netmodels.resnet as MODEL
-        train_net = MODEL.ResNet50().to(device = device)
+        correct += pred.eq(target.view_as(pred)).sum().item() # get the number of correct prediction
 
-    elif (model == 'densenet'):
-        import deeprobust.image.netmodels.densenet as MODEL
-        train_net = MODEL.densenet_cifar().to(device = device)
+    batch_num = count+1
+    average_test_loss = test_loss/len(test_loader.dataset)
+    print("=====TEST ACCURACY =====")
+    print('Attack Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        average_test_loss, correct, batch_num * batch_size,
+        100. * correct / (batch_num * batch_size)))
+    
+    # calculate empirical error (training error)
+    for count, (data, target) in enumerate(train_loader):
+        if count == batch_num:
+            break
+        print('batch:{}'.format(count))
 
-    elif (model == 'vgg11'):
-        import deeprobust.image.netmodels.vgg as MODEL
-        train_net = MODEL.VGG('VGG11').to(device = device)
-    elif (model == 'vgg13'):
-        import deeprobust.image.netmodels.vgg as MODEL
-        train_net = MODEL.VGG('VGG13').to(device = device)
-    elif (model == 'vgg16'):
-        import deeprobust.image.netmodels.vgg as MODEL
-        train_net = MODEL.VGG('VGG16').to(device = device)
-    elif (model == 'vgg19'):
-        import deeprobust.image.netmodels.vgg as MODEL
-        train_net = MODEL.VGG('VGG19').to(device = device)
+        data, target = data.to(device), target.to(device)
+        if(random_targeted == True):
+            r = list(range(0, target)) + list(range(target+1, classnum))
+            target_label = random.choice(r)
+            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
 
+        elif(target_label >= 0):
+            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
 
+        else:
+            adv_example = attackmethod.generate(data, target, **kwargs)
 
-    optimizer = optim.SGD(train_net.parameters(), lr=0.01, momentum=0.5)
+        output = model(adv_example)
+        test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
 
-    save_model = True
-    for epoch in range(1, maxepoch + 1):     ## 5 batches
+        pred = output.argmax(dim = 1, keepdim = True)  # get the index of the max log-probability.
 
-        print(epoch)
-        MODEL.train(train_net, device, train_loader, optimizer, epoch)
-        MODEL.test(train_net, device, test_loader)
+        correct += pred.eq(target.view_as(pred)).sum().item() # get the number of correct prediction 
+    
+    batch_num = count+1
+    average_test_loss = test_loss/len(test_loader.dataset)
+    
+    print("=====TRAIN ACCURACY =====") #expected 100%
+    print('Train Accuracy: {}/{} ({:.0f}%)\n'.format(
+        correct, batch_num * batch_size,
+        100. * correct / (batch_num * batch_size)))    
+    
+    print("=====TEST ACCURACY =====")
+    print('Test Accuracy: {}/{} ({:.0f}%)\n'.format(
+        correct, batch_num * batch_size,
+        100. * correct / (batch_num * batch_size)))
+    
+    print("=====EXPECTED ERROR =====")
+    print('Attack Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        average_test_loss, correct, batch_num * batch_size,
+        100. * correct / (batch_num * batch_size)))
+    
+    
+    print("=====EMIRICAL ERROR (TRAINING LOSS) =====")
+    print('Attack Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        average_test_loss, correct, batch_num * batch_size,
+        100. * correct / (batch_num * batch_size)))    
+    
+    print("=====GENERALIZATION ERROR =====")
+    print('Generalization Error: {:.4f}'.format(abs(test_loss-train_loss)))
 
-        if (save_model and (epoch % (save_per_epoch) == 0 or epoch == maxepoch)):
-            if os.path.isdir('./trained_models/'):
-                print('Save model.')
-                torch.save(train_net.state_dict(), './trained_models/'+ data + "_" + model + "_epoch_" + str(epoch) + ".pt")
-            else:
-                os.mkdir('./trained_models/')
-                print('Make directory and save model.')
-                torch.save(train_net.state_dict(), './trained_models/'+ data + "_" + model + "_epoch_" + str(epoch) + ".pt")
+def load_net(attack_model, filename, path):
+    if(attack_model == "CNN"):
+        from deeprobust.image.netmodels.CNN import Net
 
-def feed_dataset(data, data_dict):
-    if(data == 'CIFAR10'):
-        transform_train = transforms.Compose([
-                transforms.RandomCrop(32, padding=5),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-                ])
+        model = Net()
+    if(attack_model == "ResNet18"):
+        import deeprobust.image.netmodels.resnet as Net
+        model = Net.ResNet18()
 
-        transform_val = transforms.Compose([
-                transforms.ToTensor(),
-                #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-                ])
+    model.load_state_dict(torch.load(path + filename))
+    model.eval()
+    return model
 
-        train_loader = torch.utils.data.DataLoader(
-                 datasets.CIFAR10(data_dict, train=True, download = True,
-                        transform=transform_train),
-                 batch_size= 1000, shuffle=True) #, **kwargs)
-
-        test_loader  = torch.utils.data.DataLoader(
-                 datasets.CIFAR10(data_dict, train=False, download = True,
-                        transform=transform_val),
-                batch_size= 1000, shuffle=True) #, **kwargs)
-
-    elif(data == 'MNIST'):
-        train_loader = torch.utils.data.DataLoader(
-                 datasets.MNIST(data_dict, train=True, download = True,
-                 transform=transforms.Compose([transforms.ToTensor(),
-                 transforms.Normalize((0.1307,), (0.3081,))])),
-                 batch_size=64,
-                 shuffle=True)
-
+def generate_dataloader(dataset, batch_size):
+    if(dataset == "MNIST"):
         test_loader = torch.utils.data.DataLoader(
-                datasets.MNIST('../data', train=False, download = True,
-                transform=transforms.Compose([transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,))])),
-                batch_size=1000,
-                shuffle=True)
+                        datasets.MNIST('deeprobust/image/data', train = False,
+                        download = True,
+                        transform = transforms.Compose([transforms.ToTensor()])),
+                        batch_size = args.batch_size,
+                        shuffle = True)
+        print("Loading MNIST dataset.")
 
-    elif(data == 'ImageNet'):
+    elif(dataset == "CIFAR" or args.dataset == 'CIFAR10'):
+        test_loader = torch.utils.data.DataLoader(
+                        datasets.CIFAR10('deeprobust/image/data', train = False,
+                        download = True,
+                        transform = transforms.Compose([transforms.ToTensor()])),
+                        batch_size = args.batch_size,
+                        shuffle = True)
+        classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+        print("Loading CIFAR10 dataset.")
+
+    elif(dataset == "ImageNet"):
+        test_loader = torch.utils.data.DataLoader(
+                        datasets.CIFAR10('deeprobust/image/data', train=False,
+                        download = True,
+                        transform = transforms.Compose([transforms.ToTensor()])),
+                        batch_size = args.batch_size,
+                        shuffle = True)
+        print("Loading ImageNet dataset.")
+    return test_loader
+
+def parameter_parser():
+    parser = argparse.ArgumentParser(description = "Run attack algorithms.", usage ='Use -h for more information.')
+
+    parser.add_argument("--attack_method",
+                        default = 'PGD',
+                        help = "Choose a attack algorithm from: PGD(default), FGSM, LBFGS, CW, deepfool, onepixel, Nattack")
+    parser.add_argument("--attack_model",
+                        default = "CNN",
+                        help = "Choose network structure from: CNN, ResNet")
+    parser.add_argument("--path",
+                        default = "./trained_models/",
+                        help = "Type the path where the model is saved.")
+    parser.add_argument("--file_name",
+                        default = 'MNIST_CNN_epoch_20.pt',
+                        help = "Type the file_name of the model that is to be attack. The model structure should be matched with the ATTACK_MODEL parameter.")
+    parser.add_argument("--dataset",
+                        default = 'MNIST',
+                        help = "Choose a dataset from: MNIST(default), CIFAR(or CIFAR10), ImageNet")
+    parser.add_argument("--epsilon", type = float, default = 0.3)
+    parser.add_argument("--batch_num", type = int, default = 1000)
+    parser.add_argument("--batch_size", type = int, default = 1000)
+    parser.add_argument("--num_steps", type = int, default = 40)
+    parser.add_argument("--step_size", type = float, default = 0.01)
+    parser.add_argument("--random_targeted", type = bool, default = False,
+                        help = "default: False. By setting this parameter be True, the program would random generate target labels for the input samples.")
+    parser.add_argument("--target_label", type = int, default = -1,
+                        help = "default: -1. Generate all attack Fixed target label.")
+    parser.add_argument("--device", default = 'cuda',
+                        help = "Choose the device.")
+
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    # read arguments
+    args = parameter_parser() # read argument and creat an argparse object
+
+    # download example model
+    example_model_path = './trained_models/MNIST_CNN_epoch_20.pt'
+    if not (os.path.exists('./trained_models')):
+        os.mkdir('./trained_models')
+        print('create path: ./trained_models')
+    model_url = "https://github.com/I-am-Bot/deeprobust_trained_model/blob/master/MNIST_CNN_epoch_20.pt?raw=true"
+    r = requests.get(model_url)
+    print('Downloading example model...')
+    with open(example_model_path,'wb') as f:
+        f.write(r.content)
+    print('Downloaded.')
+    # load model
+    model = load_net(args.attack_model, args.file_name, args.path)
+
+    print("===== START ATTACK =====")
+    if(args.attack_method == "PGD"):
+        from deeprobust.image.attack.pgd import PGD
+        test_loader = generate_dataloader(args.dataset, args.batch_size)
+        attack_method = PGD(model, args.device)
+        utils.tab_printer(args)
+        run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
+
+    elif(args.attack_method == "FGSM"):
+        from deeprobust.image.attack.fgsm import FGSM
+        test_loader = generate_dataloader(args.dataset, args.batch_size)
+        attack_method = FGSM(model, args.device)
+        utils.tab_printer(args)
+        run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
+
+    elif(args.attack_method == "LBFGS"):
+        from deeprobust.image.attack.lbfgs import LBFGS
+        try:
+            if (args.batch_size >1):
+                raise ValueError("batch_size shouldn't be larger than 1.")
+        except ValueError:
+            args.batch_size = 1
+
+        try:
+            if (args.random_targeted == 0 and args.target_label == -1):
+                raise ValueError("No target label assigned. Random generate target for each input.")
+        except ValueError:
+            args.random_targeted = True
+
+        utils.tab_printer(args)
+        test_loader = generate_dataloader(args.dataset, args.batch_size)
+        attack_method = LBFGS(model, args.device)
+        run_attack(attack_method, 1, args.batch_num, args.device, test_loader, random_targeted = args.random_targeted, target_label = args.target_label)
+
+    elif(args.attack_method == "CW"):
+        from deeprobust.image.attack.cw import CarliniWagner
+        attack_method = CarliniWagner(model, args.device)
+        try:
+            if (args.batch_size > 1):
+                raise ValueError("batch_size shouldn't be larger than 1.")
+        except ValueError:
+            args.batch_size = 1
+
+        try:
+            if (args.random_targeted == 0 and args.target_label == -1):
+                raise ValueError("No target label assigned. Random generate target for each input.")
+        except ValueError:
+            args.random_targeted = True
+
+        utils.tab_printer(args)
+        test_loader = generate_dataloader(args.dataset, args.batch_size)
+        run_attack(attack_method, 1, args.batch_num, args.device, test_loader, random_targeted = args.random_targeted, target_label = args.target_label)
+
+    elif(args.attack_method == "deepfool"):
+        from deeprobust.image.attack.deepfool import DeepFool
+        attack_method = DeepFool(model, args.device)
+        try:
+            if (args.batch_size > 1):
+                raise ValueError("batch_size shouldn't be larger than 1.")
+        except ValueError:
+            args.batch_size = 1
+
+        utils.tab_printer(args)
+        test_loader = generate_dataloader(args.dataset, args.batch_size)
+        run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader)
+
+    elif(args.attack_method == "onepixel"):
+        from deeprobust.image.attack.onepixel import Onepixel
+        attack_method = Onepixel(model, args.device)
+        try:
+            if (args.batch_size > 1):
+                raise ValueError("batch_size shouldn't be larger than 1.")
+        except ValueError:
+            args.batch_size = 1
+
+        utils.tab_printer(args)
+        test_loader = generate_dataloader(args.dataset, args.batch_size)
+        run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader)
+
+    elif(args.attack_method == "Nattack"):
         pass
-
-    return train_loader, test_loader
-
-
-
