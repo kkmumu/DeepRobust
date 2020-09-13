@@ -90,7 +90,6 @@ def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, 
         print(epoch)
         train_loss += MODEL.train(train_net, device, train_loader, optimizer, epoch)
         test_loss += MODEL.test(train_net, device, test_loader)
-        MODEL.generalization(train_net,device,train_loader,test_loader,optimizer, epoch)
 
         if (save_model and (epoch % (save_per_epoch) == 0 or epoch == maxepoch)):
             if os.path.isdir('./trained_models/'):
