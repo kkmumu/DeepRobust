@@ -2,6 +2,7 @@ import requests
 import torch
 from torchvision import datasets,models,transforms
 import torch.nn.functional as F
+from sklearn.model_selection import KFold
 import os
 
 import numpy as np
@@ -17,6 +18,8 @@ def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_
     samplenum = 1000
     count = 0
     classnum = 10
+    max_error = 0
+    
     for count, (data, target) in enumerate(test_loader):
         if count == batch_num:
             break
@@ -36,6 +39,10 @@ def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_
 
         output = model(adv_example)
         test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+        
+        # update the maximal loss error between test samples and adversarial attack samples
+        if abs(F.nll_loss(output, target).item()-F.nll_loss(data, target).item()) > max_error:
+            max_error = abs(F.nll_loss(output, target).item()-F.nll_loss(data, target).item())
 
         pred = output.argmax(dim = 1, keepdim = True)  # get the index of the max log-probability.
 
@@ -43,11 +50,37 @@ def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_
 
     batch_num = count+1
     test_loss /= len(test_loader.dataset)
+    
     print("===== ACCURACY =====")
     print('Attack Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, batch_num * batch_size,
         100. * correct / (batch_num * batch_size)))
+    
+    return max_error
 
+    
+def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device, test_loader, random_targeted = False, target_label = -1, **kwargs):
+    kfold = KFold(n_splits)
+    max_perturb = 0
+    for fold, (train_index, test_index) in enumerate(kfold.split(x_train, y_train)):
+        ### Dividing data into folds
+        x_train_fold = x_train[train_index]
+        x_test_fold = x_train[test_index]
+        y_train_fold = y_train[train_index]
+        y_test_fold = y_train[test_index]
+
+        train = torch.utils.data.TensorDataset(x_train_fold, y_train_fold)
+        test = torch.utils.data.TensorDataset(x_test_fold, y_test_fold)
+        train_loader = torch.utils.data.DataLoader(train, batch_size = batch_size, shuffle = False)
+        test_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
+        
+        max_error = run_attack(attack_method, batch_size, batch_num, device, test_loader, **kwargs)
+        if max_error > max_perturb:
+            max_perturb = max_error
+            
+    return max_perturb
+
+        
 def load_net(attack_model, filename, path):
     if(attack_model == "CNN"):
         from deeprobust.image.netmodels.CNN import Net
@@ -95,7 +128,7 @@ def parameter_parser():
     parser = argparse.ArgumentParser(description = "Run attack algorithms.", usage ='Use -h for more information.')
 
     parser.add_argument("--attack_method",
-                        default = 'PGD',
+                        default = 'FGSM',
                         help = "Choose a attack algorithm from: PGD(default), FGSM, LBFGS, CW, deepfool, onepixel, Nattack")
     parser.add_argument("--attack_model",
                         default = "CNN",
@@ -155,7 +188,8 @@ if __name__ == "__main__":
         test_loader = generate_dataloader(args.dataset, args.batch_size)
         attack_method = FGSM(model, args.device)
         utils.tab_printer(args)
-        run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
+        #run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
+        evaluate_perturbation(10, attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
 
     elif(args.attack_method == "LBFGS"):
         from deeprobust.image.attack.lbfgs import LBFGS
@@ -223,4 +257,3 @@ if __name__ == "__main__":
 
     elif(args.attack_method == "Nattack"):
         pass
-
