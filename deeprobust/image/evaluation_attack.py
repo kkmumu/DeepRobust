@@ -62,16 +62,14 @@ def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_
 def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device, test_loader, random_targeted = False, target_label = -1, **kwargs):
     kfold = KFold(n_splits)
     max_perturb = 0
-    for fold, (train_index, test_index) in enumerate(kfold.split(x_train, y_train)):
-        ### Dividing data into folds
-        x_train_fold = x_train[train_index]
-        x_test_fold = x_train[test_index]
-        y_train_fold = y_train[train_index]
-        y_test_fold = y_train[test_index]
+    
+    ### Dividing data and targets into folds
+    for fold, (data_index, target_index) in enumerate(kfold.split(test_loader.dataset)):
+        
+        data_test_fold = test_loader.dataset.data[data_index]
+        targets_test_fold = test_loader.dataset.targets[target_index]
 
-        train = torch.utils.data.TensorDataset(x_train_fold, y_train_fold)
-        test = torch.utils.data.TensorDataset(x_test_fold, y_test_fold)
-        train_loader = torch.utils.data.DataLoader(train, batch_size = batch_size, shuffle = False)
+        test = torch.utils.data.TensorDataset(data_test_fold, targets_test_fold)
         test_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
         
         max_error = run_attack(attack_method, batch_size, batch_num, device, test_loader, **kwargs)
