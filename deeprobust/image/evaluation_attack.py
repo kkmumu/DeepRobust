@@ -64,11 +64,11 @@ def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device,
     max_perturb = 0
     
     ### Dividing data and targets into folds
-    for fold, (data_index, target_index) in enumerate(kfold.split(test_loader.dataset)):
+    for  fold, (train_index, test_index) in enumerate(kfold.split(test_loader.dataset)):
         
-        data_test_fold = test_loader.dataset.data[data_index]
-        targets_test_fold = test_loader.dataset.targets[target_index]
-
+        data_test_fold = test_loader.dataset.data[test_index]
+        targets_test_fold = test_loader.dataset.targets[test_index]
+        
         test = torch.utils.data.TensorDataset(data_test_fold, targets_test_fold)
         test_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
         
