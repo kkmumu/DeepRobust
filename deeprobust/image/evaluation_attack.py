@@ -72,7 +72,7 @@ def generate_perturbation(attackmethod, batch_size, batch_num, device, train_loa
             break
         print('batch:{}'.format(count))
 
-        data, target = data.to(device), target.to(device)
+        data, target = data.to(device, dtype=torch.float), target.to(device)
         if(random_targeted == True):
             r = list(range(0, target)) + list(range(target+1, classnum))
             target_label = random.choice(r)
@@ -84,14 +84,17 @@ def generate_perturbation(attackmethod, batch_size, batch_num, device, train_loa
         else:
             adv_example = attackmethod.generate(data, target, epsilon = epsilon)
 
-        output = model(adv_example)
-        test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-        
-        # update the maximal loss error between test samples and adversarial attack samples
-        if abs(F.nll_loss(output, target).item()-F.nll_loss(data, target).item()) > max_error:
-            max_error = abs(F.nll_loss(output, target).item()-F.nll_loss(data, target).item())
+        output_adv = model(adv_example)
+        output_org = model(data)
 
-        pred = output.argmax(dim = 1, keepdim = True)  # get the index of the max log-probability.
+        test_loss += F.nll_loss(output_adv, target, reduction='sum').item()  # sum up batch loss
+        print(F.nll_loss(output_adv, target, reduction='sum').item())
+        print(F.nll_loss(output_org, target, reduction='sum').item())
+        # update the maximal loss error between test samples and adversarial attack samples
+        if abs(F.nll_loss(output_adv, target, reduction='sum').item()-F.nll_loss(output_org, target, reduction='sum').item()) > max_error:
+            max_error = abs(F.nll_loss(output_adv, target, reduction='sum').item()-F.nll_loss(output_org, target, reduction='sum').item())
+
+        pred = output_adv.argmax(dim = 1, keepdim = True)  # get the index of the max log-probability.
 
         correct += pred.eq(target.view_as(pred)).sum().item()
 
@@ -120,13 +123,15 @@ def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device,
 
         test = torch.utils.data.TensorDataset(data_test_fold.unsqueeze(1), targets_test_fold)
         test_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
+
         max_error = generate_perturbation(attackmethod, batch_size, batch_num, device, test_loader, epsilon, random_targeted, target_label)
-        print(max_error)
-        
+                
         if max_error > max_perturb:
             max_perturb = max_error
             
-    print("PERTURBATION ERROR: %.4f\n",max_perturb)
+    print("===== PERTURBATION ERROR =====")
+    print('Splits: {}, Perturbation Error : {:.4f}\n'.format(
+        n_splits, max_perturb))
     return max_perturb
 
         
