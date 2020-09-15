@@ -58,7 +58,7 @@ def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_
     
     return max_error
 
-def generate_perturbation(attackmethod, batch_size, batch_num, device, train_loader, random_targeted = False, target_label = -1, epsilon):
+def generate_perturbation(attackmethod, batch_size, batch_num, device, train_loader, epsilon, random_targeted = False, target_label = -1):
     test_loss = 0
     correct = 0
     samplenum = 1000
@@ -106,7 +106,7 @@ def generate_perturbation(attackmethod, batch_size, batch_num, device, train_loa
 
 
     
-def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device, train_loader, random_targeted = False, target_label = -1, epsilon):
+def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device, train_loader, epsilon, random_targeted = False, target_label = -1):
     kfold = KFold(n_splits)
     max_perturb = 0
     
@@ -119,7 +119,7 @@ def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device,
         test = torch.utils.data.TensorDataset(data_test_fold, targets_test_fold)
         train_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
         
-        max_error = generate_perturbation(attackmethod, batch_size, batch_num, device, train_loader, random_targeted = False, target_label = -1, epsilon)
+        max_error = generate_perturbation(attackmethod, batch_size, batch_num, device, train_loader, epsilon, random_targeted, target_label)
         
         if max_error > max_perturb:
             max_perturb = max_error
