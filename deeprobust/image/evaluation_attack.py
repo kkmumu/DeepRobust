@@ -35,7 +35,7 @@ def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_
             adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
 
         else:
-            adv_example = attackmethod.generate(data, target, **kwargs)
+            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
 
         output = model(adv_example)
         test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
