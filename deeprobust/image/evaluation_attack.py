@@ -72,10 +72,11 @@ def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device,
         test = torch.utils.data.TensorDataset(data_test_fold, targets_test_fold)
         test_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
         
-        max_error = run_attack(attack_method, batch_size, batch_num, device, test_loader, epsilon = args.epsilon)
+        max_error = run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_targeted = False, target_label = -1, **kwargs)
+        
         if max_error > max_perturb:
             max_perturb = max_error
-            
+    print("PERTURBATION ERROR: %.4f\n",max_perturb)
     return max_perturb
 
         
