@@ -35,7 +35,7 @@ def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_
             adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
 
         else:
-            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
+            adv_example = attackmethod.generate(data, target, **kwargs)
 
         output = model(adv_example)
         test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
@@ -58,21 +58,68 @@ def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_
     
     return max_error
 
+def generate_perturbation(attackmethod, batch_size, batch_num, device, train_loader, random_targeted = False, target_label = -1, epsilon):
+    test_loss = 0
+    correct = 0
+    samplenum = 1000
+    count = 0
+    classnum = 10
+    max_error = 0
     
-def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device, test_loader, random_targeted = False, target_label = -1, **kwargs):
+    for count, (data, target) in enumerate(train_loader):
+        if count == batch_num:
+            break
+        print('batch:{}'.format(count))
+
+        data, target = data.to(device), target.to(device)
+        if(random_targeted == True):
+            r = list(range(0, target)) + list(range(target+1, classnum))
+            target_label = random.choice(r)
+            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
+
+        elif(target_label >= 0):
+            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
+
+        else:
+            adv_example = attackmethod.generate(data, target, **kwargs)
+
+        output = model(adv_example)
+        test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+        
+        # update the maximal loss error between test samples and adversarial attack samples
+        if abs(F.nll_loss(output, target).item()-F.nll_loss(data, target).item()) > max_error:
+            max_error = abs(F.nll_loss(output, target).item()-F.nll_loss(data, target).item())
+
+        pred = output.argmax(dim = 1, keepdim = True)  # get the index of the max log-probability.
+
+        correct += pred.eq(target.view_as(pred)).sum().item()
+
+    batch_num = count+1
+    test_loss /= len(train_loader.dataset)
+    
+    print("===== ACCURACY =====")
+    print('Perturbation Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss, correct, batch_num * batch_size,
+        100. * correct / (batch_num * batch_size)))
+    
+    return max_error
+
+
+    
+def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device, train_loader, random_targeted = False, target_label = -1, epsilon):
     kfold = KFold(n_splits)
     max_perturb = 0
     
     ### Dividing data and targets into folds
-    for  fold, (train_index, test_index) in enumerate(kfold.split(test_loader.dataset)):
+    for  fold, (train_index, test_index) in enumerate(kfold.split(train_loader.dataset)):
         
-        data_test_fold = test_loader.dataset.data[test_index]
-        targets_test_fold = test_loader.dataset.targets[test_index]
+        data_test_fold = train_loader.dataset.data[test_index]
+        targets_test_fold = train_loader.dataset.targets[test_index]
         
         test = torch.utils.data.TensorDataset(data_test_fold, targets_test_fold)
-        test_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
+        train_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
         
-        max_error = run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_targeted = False, target_label = -1, **kwargs)
+        max_error = generate_perturbation(attackmethod, batch_size, batch_num, device, train_loader, random_targeted = False, target_label = -1, epsilon)
         
         if max_error > max_perturb:
             max_perturb = max_error
