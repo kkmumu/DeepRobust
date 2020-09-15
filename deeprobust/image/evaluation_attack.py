@@ -75,13 +75,13 @@ def generate_perturbation(attackmethod, batch_size, batch_num, device, train_loa
         if(random_targeted == True):
             r = list(range(0, target)) + list(range(target+1, classnum))
             target_label = random.choice(r)
-            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
+            adv_example = attackmethod.generate(data, target, target_label = target_label, epsilon = epsilon)
 
         elif(target_label >= 0):
-            adv_example = attackmethod.generate(data, target, target_label = target_label, **kwargs)
+            adv_example = attackmethod.generate(data, target, target_label = target_label, epsilon = epsilon)
 
         else:
-            adv_example = attackmethod.generate(data, target, **kwargs)
+            adv_example = attackmethod.generate(data, target, epsilon = epsilon)
 
         output = model(adv_example)
         test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
