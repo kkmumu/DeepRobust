@@ -117,11 +117,9 @@ def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device,
         
         data_test_fold = train_loader.dataset.data[test_index]
         targets_test_fold = train_loader.dataset.targets[test_index]
-        
-        test = torch.utils.data.TensorDataset(data_test_fold, targets_test_fold)
-        test = test.unsqueeze(0)
+
+        test = torch.utils.data.TensorDataset(data_test_fold.unsqueeze(1), targets_test_fold)
         test_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
-        
         max_error = generate_perturbation(attackmethod, batch_size, batch_num, device, test_loader, epsilon, random_targeted, target_label)
         print(max_error)
         
@@ -211,7 +209,7 @@ def parameter_parser():
 if __name__ == "__main__":
     # load train set
     train_loader = torch.utils.data.DataLoader(
-             datasets.MNIST('./', train=True, download = False,
+             datasets.MNIST('./', train=True, download = True,
              transform=transforms.Compose([transforms.ToTensor(),
              transforms.Normalize((0.1307,), (0.3081,))])), # 0.1307 and 0.3081 is the mean and std of MNIST
              batch_size=64,
@@ -232,7 +230,7 @@ if __name__ == "__main__":
        
     # set parameters
     n_splits = 10
-    batch_size = 64
+    batch_size = 32
     batch_num = 1000
     device = 'cuda'
     epsilon = 0.3
