@@ -10,7 +10,8 @@ import argparse
 import matplotlib.pyplot as plt
 import random
 
-from deeprobust.image import utils
+import deeprobust.image.utils
+from deeprobust.image.attack.fgsm import FGSM
 
 def run_attack(attackmethod, batch_size, batch_num, device, test_loader, random_targeted = False, target_label = -1, **kwargs):
     test_loss = 0
@@ -107,6 +108,7 @@ def generate_perturbation(attackmethod, batch_size, batch_num, device, train_loa
 
     
 def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device, train_loader, epsilon, random_targeted = False, target_label = -1):
+    
     kfold = KFold(n_splits)
     max_perturb = 0
     
@@ -117,12 +119,15 @@ def evaluate_perturbation(n_splits, attackmethod, batch_size, batch_num, device,
         targets_test_fold = train_loader.dataset.targets[test_index]
         
         test = torch.utils.data.TensorDataset(data_test_fold, targets_test_fold)
-        train_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
+        test = test.unsqueeze(0)
+        test_loader = torch.utils.data.DataLoader(test, batch_size = batch_size, shuffle = False)
         
-        max_error = generate_perturbation(attackmethod, batch_size, batch_num, device, train_loader, epsilon, random_targeted, target_label)
+        max_error = generate_perturbation(attackmethod, batch_size, batch_num, device, test_loader, epsilon, random_targeted, target_label)
+        print(max_error)
         
         if max_error > max_perturb:
             max_perturb = max_error
+            
     print("PERTURBATION ERROR: %.4f\n",max_perturb)
     return max_perturb
 
@@ -204,9 +209,14 @@ def parameter_parser():
 
 
 if __name__ == "__main__":
-    # read arguments
-    args = parameter_parser() # read argument and creat an argparse object
-
+    # load train set
+    train_loader = torch.utils.data.DataLoader(
+             datasets.MNIST('./', train=True, download = False,
+             transform=transforms.Compose([transforms.ToTensor(),
+             transforms.Normalize((0.1307,), (0.3081,))])), # 0.1307 and 0.3081 is the mean and std of MNIST
+             batch_size=64,
+             shuffle=True)
+    
     # download example model
     example_model_path = './trained_models/MNIST_CNN_epoch_20.pt'
     if not (os.path.exists('./trained_models')):
@@ -217,89 +227,121 @@ if __name__ == "__main__":
     print('Downloading example model...')
     with open(example_model_path,'wb') as f:
         f.write(r.content)
-    print('Downloaded.')
-    # load model
-    model = load_net(args.attack_model, args.file_name, args.path)
+    print('Downloaded.') 
+    
+       
+    # set parameters
+    n_splits = 10
+    batch_size = 64
+    batch_num = 1000
+    device = 'cuda'
+    epsilon = 0.3
+    attack_model = 'CNN'
+    file_name = 'MNIST_CNN_epoch_20.pt'
+    path = './trained_models/'
+    model = load_net(attack_model, file_name, path)
+    attack_method = FGSM(model, device)
+    
+    evaluate_perturbation(n_splits, attack_method, batch_size, batch_num, device, train_loader, epsilon=epsilon)
 
-    print("===== START ATTACK =====")
-    if(args.attack_method == "PGD"):
-        from deeprobust.image.attack.pgd import PGD
-        test_loader = generate_dataloader(args.dataset, args.batch_size)
-        attack_method = PGD(model, args.device)
-        utils.tab_printer(args)
-        run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
 
-    elif(args.attack_method == "FGSM"):
-        from deeprobust.image.attack.fgsm import FGSM
-        test_loader = generate_dataloader(args.dataset, args.batch_size)
-        attack_method = FGSM(model, args.device)
-        utils.tab_printer(args)
-        #run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
-        evaluate_perturbation(10, attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
+    
+    # # read arguments
+    # args = parameter_parser() # read argument and creat an argparse object
 
-    elif(args.attack_method == "LBFGS"):
-        from deeprobust.image.attack.lbfgs import LBFGS
-        try:
-            if (args.batch_size >1):
-                raise ValueError("batch_size shouldn't be larger than 1.")
-        except ValueError:
-            args.batch_size = 1
+    # # download example model
+    # example_model_path = './trained_models/MNIST_CNN_epoch_20.pt'
+    # if not (os.path.exists('./trained_models')):
+    #     os.mkdir('./trained_models')
+    #     print('create path: ./trained_models')
+    # model_url = "https://github.com/I-am-Bot/deeprobust_trained_model/blob/master/MNIST_CNN_epoch_20.pt?raw=true"
+    # r = requests.get(model_url)
+    # print('Downloading example model...')
+    # with open(example_model_path,'wb') as f:
+    #     f.write(r.content)
+    # print('Downloaded.')
+    # # load model
+    # model = load_net(args.attack_model, args.file_name, args.path)
 
-        try:
-            if (args.random_targeted == 0 and args.target_label == -1):
-                raise ValueError("No target label assigned. Random generate target for each input.")
-        except ValueError:
-            args.random_targeted = True
+    # print("===== START ATTACK =====")
+    # if(args.attack_method == "PGD"):
+    #     from deeprobust.image.attack.pgd import PGD
+    #     test_loader = generate_dataloader(args.dataset, args.batch_size)
+    #     attack_method = PGD(model, args.device)
+    #     utils.tab_printer(args)
+    #     run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
 
-        utils.tab_printer(args)
-        test_loader = generate_dataloader(args.dataset, args.batch_size)
-        attack_method = LBFGS(model, args.device)
-        run_attack(attack_method, 1, args.batch_num, args.device, test_loader, random_targeted = args.random_targeted, target_label = args.target_label)
+    # elif(args.attack_method == "FGSM"):
+    #     from deeprobust.image.attack.fgsm import FGSM
+    #     test_loader = generate_dataloader(args.dataset, args.batch_size)
+    #     attack_method = FGSM(model, args.device)
+    #     utils.tab_printer(args)
+    #     #run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
+    #     evaluate_perturbation(10, attack_method, args.batch_size, args.batch_num, args.device, test_loader, epsilon = args.epsilon)
 
-    elif(args.attack_method == "CW"):
-        from deeprobust.image.attack.cw import CarliniWagner
-        attack_method = CarliniWagner(model, args.device)
-        try:
-            if (args.batch_size > 1):
-                raise ValueError("batch_size shouldn't be larger than 1.")
-        except ValueError:
-            args.batch_size = 1
+    # elif(args.attack_method == "LBFGS"):
+    #     from deeprobust.image.attack.lbfgs import LBFGS
+    #     try:
+    #         if (args.batch_size >1):
+    #             raise ValueError("batch_size shouldn't be larger than 1.")
+    #     except ValueError:
+    #         args.batch_size = 1
 
-        try:
-            if (args.random_targeted == 0 and args.target_label == -1):
-                raise ValueError("No target label assigned. Random generate target for each input.")
-        except ValueError:
-            args.random_targeted = True
+    #     try:
+    #         if (args.random_targeted == 0 and args.target_label == -1):
+    #             raise ValueError("No target label assigned. Random generate target for each input.")
+    #     except ValueError:
+    #         args.random_targeted = True
 
-        utils.tab_printer(args)
-        test_loader = generate_dataloader(args.dataset, args.batch_size)
-        run_attack(attack_method, 1, args.batch_num, args.device, test_loader, random_targeted = args.random_targeted, target_label = args.target_label)
+    #     utils.tab_printer(args)
+    #     test_loader = generate_dataloader(args.dataset, args.batch_size)
+    #     attack_method = LBFGS(model, args.device)
+    #     run_attack(attack_method, 1, args.batch_num, args.device, test_loader, random_targeted = args.random_targeted, target_label = args.target_label)
 
-    elif(args.attack_method == "deepfool"):
-        from deeprobust.image.attack.deepfool import DeepFool
-        attack_method = DeepFool(model, args.device)
-        try:
-            if (args.batch_size > 1):
-                raise ValueError("batch_size shouldn't be larger than 1.")
-        except ValueError:
-            args.batch_size = 1
+    # elif(args.attack_method == "CW"):
+    #     from deeprobust.image.attack.cw import CarliniWagner
+    #     attack_method = CarliniWagner(model, args.device)
+    #     try:
+    #         if (args.batch_size > 1):
+    #             raise ValueError("batch_size shouldn't be larger than 1.")
+    #     except ValueError:
+    #         args.batch_size = 1
 
-        utils.tab_printer(args)
-        test_loader = generate_dataloader(args.dataset, args.batch_size)
-        run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader)
+    #     try:
+    #         if (args.random_targeted == 0 and args.target_label == -1):
+    #             raise ValueError("No target label assigned. Random generate target for each input.")
+    #     except ValueError:
+    #         args.random_targeted = True
 
-    elif(args.attack_method == "onepixel"):
-        from deeprobust.image.attack.onepixel import Onepixel
-        attack_method = Onepixel(model, args.device)
-        try:
-            if (args.batch_size > 1):
-                raise ValueError("batch_size shouldn't be larger than 1.")
-        except ValueError:
-            args.batch_size = 1
+    #     utils.tab_printer(args)
+    #     test_loader = generate_dataloader(args.dataset, args.batch_size)
+    #     run_attack(attack_method, 1, args.batch_num, args.device, test_loader, random_targeted = args.random_targeted, target_label = args.target_label)
 
-        utils.tab_printer(args)
-        test_loader = generate_dataloader(args.dataset, args.batch_size)
-        run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader)
+    # elif(args.attack_method == "deepfool"):
+    #     from deeprobust.image.attack.deepfool import DeepFool
+    #     attack_method = DeepFool(model, args.device)
+    #     try:
+    #         if (args.batch_size > 1):
+    #             raise ValueError("batch_size shouldn't be larger than 1.")
+    #     except ValueError:
+    #         args.batch_size = 1
 
-    elif(args.attack_method == "Nattack"):
-        pass
+    #     utils.tab_printer(args)
+    #     test_loader = generate_dataloader(args.dataset, args.batch_size)
+    #     run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader)
+
+    # elif(args.attack_method == "onepixel"):
+    #     from deeprobust.image.attack.onepixel import Onepixel
+    #     attack_method = Onepixel(model, args.device)
+    #     try:
+    #         if (args.batch_size > 1):
+    #             raise ValueError("batch_size shouldn't be larger than 1.")
+    #     except ValueError:
+    #         args.batch_size = 1
+
+    #     utils.tab_printer(args)
+    #     test_loader = generate_dataloader(args.dataset, args.batch_size)
+    #     run_attack(attack_method, args.batch_size, args.batch_num, args.device, test_loader)
+
+    # elif(args.attack_method == "Nattack"):
+    #     pass
