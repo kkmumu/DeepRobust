@@ -13,7 +13,7 @@ from torchvision import datasets, transforms
 import numpy as np
 from PIL import Image
 
-def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, seed = 100):
+def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, seed = 100, shuffle = False, random_train = False):
     """train.
 
     Parameters
@@ -32,7 +32,8 @@ def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, 
         save_per_epoch(default = 10)
     seed :
         seed
-    
+    random_test :
+        set train_set to be random drawn
     Examples
     --------
     >>>import deeprobust.image.netmodels.train_model as trainmodel
@@ -41,8 +42,8 @@ def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, 
 
     torch.manual_seed(seed)
 
-    train_loader, test_loader = feed_dataset(data, data_path)
-    device = torch.device("cuda:0")
+    train_loader, test_loader = feed_dataset(data, data_path, random_train)
+    device = torch.device("cuda")
 
     if (model == 'CNN'):
         import deeprobust.image.netmodels.CNN as MODEL
@@ -83,13 +84,11 @@ def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, 
     optimizer = optim.SGD(train_net.parameters(), lr=0.01, momentum=0.5)
 
     save_model = True
-    train_loss = 0
-    test_loss = 0
     for epoch in range(1, maxepoch + 1):     ## 5 batches
 
         print(epoch)
-        train_loss += MODEL.train(train_net, device, train_loader, optimizer, epoch)
-        test_loss += MODEL.test(train_net, device, test_loader)
+        MODEL.train(train_net, device, train_loader, optimizer, epoch)
+        MODEL.test(train_net, device, test_loader)
 
         if (save_model and (epoch % (save_per_epoch) == 0 or epoch == maxepoch)):
             if os.path.isdir('./trained_models/'):
@@ -99,64 +98,71 @@ def train(model, data, device, maxepoch, data_path = './', save_per_epoch = 10, 
                 os.mkdir('./trained_models/')
                 print('Make directory and save model.')
                 torch.save(train_net.state_dict(), './trained_models/'+ data + "_" + model + "_epoch_" + str(epoch) + ".pt")
+
+def feed_dataset(data, data_dict, random_train = False):
+    if random_train == True:
+        if(data == 'MNIST'):
+            train_set = datasets.MNIST('./', train=True, download = True)
+            test_set = datasets.MNIST('../data', train=False, download = True)
+            full_set = torch.utils.data.ConcatDataset([train_set,test_set])
+            
+            trans = transforms.Compose(transforms = [
+                transforms.ToTensor(),transforms.Normalize((0.1307,), (0.3081,))])
+            
+            train_len = 60000
+            test_len = 10000
+            trainset_new, testset_new = torch.utils.data.random_split(full_set,[train_len, test_len])
+            trainset_new.transform = trans
+            testset_new.transform = trans
+            train_loader = torch.utils.data.DataLoader(trainset_new, batch_size = 64, shuffle = True)
+            test_loader = torch.utils.data.DataLoader(testset_new, batch_size = 1000, shuffle = True)
+            
+        else:
+            pass
+        
+        return train_loader, test_loader
     
-    empirical_error = train_loss / (len(train_loader.dataset)*maxepoch)
-    expected_error = (train_loss + test_loss) / ((len(train_loader)+len(test_loader))*maxepoch)
-    generalization_error = abs(expected_error - empirical_error)
-    
-    print("========Expected Error========")
-    print('Expected Error over the whole set: {:.4f}'.format(expected_error))
-          
-    print("========Empirical Error========")
-    print('Empirical Error over the training set: {:.4f}'.format(empirical_error))
-          
-    print("========Generalization Error========")
-    print('Generalization Error: {:.4f}\n'.format(generalization_error))
-    
-    
-     
-
-def feed_dataset(data, data_dict):
-    if(data == 'CIFAR10'):
-        transform_train = transforms.Compose([
-                transforms.RandomCrop(32, padding=5),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-                ])
-
-        transform_val = transforms.Compose([
-                transforms.ToTensor(),
-                #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-                ])
-
-        train_loader = torch.utils.data.DataLoader(
-                 datasets.CIFAR10(data_dict, train=True, download = True,
-                        transform=transform_train),
-                 batch_size= 1000, shuffle=True) #, **kwargs)
-
-        test_loader  = torch.utils.data.DataLoader(
-                 datasets.CIFAR10(data_dict, train=False, download = True,
-                        transform=transform_val),
-                batch_size= 1000, shuffle=True) #, **kwargs)
-
-    elif(data == 'MNIST'):
-        train_loader = torch.utils.data.DataLoader(
-                 datasets.MNIST(data_dict, train=True, download = True,
-                 transform=transforms.Compose([transforms.ToTensor(),
-                 transforms.Normalize((0.1307,), (0.3081,))])), # 0.1307 and 0.3081 is the mean and std of MNIST
-                 batch_size=64,
-                 shuffle=True)
-
-        test_loader = torch.utils.data.DataLoader(
-                datasets.MNIST('../data', train=False, download = True,
-                transform=transforms.Compose([transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,))])),
-                batch_size=1000,
-                shuffle=True)
-
-    elif(data == 'ImageNet'):
-        pass
-
-    return train_loader, test_loader
+    else:
+        if(data == 'CIFAR10'):
+            transform_train = transforms.Compose([
+                    transforms.RandomCrop(32, padding=5),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                    ])
+        
+            transform_val = transforms.Compose([
+                    transforms.ToTensor(),
+                    #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                    ])
+        
+            train_loader = torch.utils.data.DataLoader(
+                     datasets.CIFAR10(data_dict, train=True, download = True,
+                            transform=transform_train),
+                     batch_size= 1000, shuffle=True) #, **kwargs)
+        
+            test_loader  = torch.utils.data.DataLoader(
+                     datasets.CIFAR10(data_dict, train=False, download = True,
+                            transform=transform_val),
+                    batch_size= 1000, shuffle=True) #, **kwargs)
+        
+        elif(data == 'MNIST'):
+            train_loader = torch.utils.data.DataLoader(
+                     datasets.MNIST(data_dict, train=True, download = True,
+                     transform=transforms.Compose([transforms.ToTensor(),
+                     transforms.Normalize((0.1307,), (0.3081,))])),
+                     batch_size=64,
+                     shuffle=True)
+        
+            test_loader = torch.utils.data.DataLoader(
+                    datasets.MNIST('../data', train=False, download = True,
+                    transform=transforms.Compose([transforms.ToTensor(),
+                    transforms.Normalize((0.1307,), (0.3081,))])),
+                    batch_size=1000,
+                    shuffle=True)
+        
+        elif(data == 'ImageNet'):
+            pass
+        
+        return train_loader, test_loader
 
