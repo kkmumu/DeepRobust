@@ -68,8 +68,8 @@ class FGSMtraining(BaseDefense):
                     print("make new directory and save model in " + './' + self.save_dir)
                     os.mkdir('./' + self.save_dir)
                     torch.save(self.model.state_dict(), './' + self.save_dir +"/" + self.save_name)
-        empirical_error = train_loss / (len(train_loader.dataset)*maxepoch)
-        expected_error = (train_loss + test_loss) / ((len(train_loader)+len(test_loader))*maxepoch)
+        empirical_error = train_loss / (len(train_loader.dataset)*self.epoch_num)
+        expected_error = (train_loss + test_loss) / ((len(train_loader)+len(test_loader))*self.epoch_num)
         generalization_error = abs(expected_error - empirical_error)
 
         print("========Expected Error========")
