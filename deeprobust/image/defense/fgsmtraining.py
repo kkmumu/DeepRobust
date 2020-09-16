@@ -52,11 +52,13 @@ class FGSMtraining(BaseDefense):
         device = torch.device(self.device)
         optimizer = optim.Adam(self.model.parameters(), self.lr_train)
 
+        train_loss = 0
+        test_loss = 0
         for epoch in range(1, self.epoch_num + 1):
 
             print(epoch, flush = True)
-            self.train(self.device, train_loader, optimizer, epoch)
-            self.test(self.model, self.device, test_loader)
+            train_loss += self.train(self.device, train_loader, optimizer, epoch)
+            test_loss += self.test(self.model, self.device, test_loader)
 
             if (self.save_model):
                 if os.path.isdir('./' + self.save_dir):
@@ -66,6 +68,18 @@ class FGSMtraining(BaseDefense):
                     print("make new directory and save model in " + './' + self.save_dir)
                     os.mkdir('./' + self.save_dir)
                     torch.save(self.model.state_dict(), './' + self.save_dir +"/" + self.save_name)
+        empirical_error = train_loss / (len(train_loader.dataset)*maxepoch)
+        expected_error = (train_loss + test_loss) / ((len(train_loader)+len(test_loader))*maxepoch)
+        generalization_error = abs(expected_error - empirical_error)
+
+        print("========Expected Error========")
+        print('Expected Error over the whole set: {:.4f}'.format(expected_error))	
+
+        print("========Empirical Error========")
+        print('Empirical Error over the training set: {:.4f}'.format(empirical_error))
+
+        print("========Generalization Error========")
+        print('Generalization Error: {:.4f}\n'.format(generalization_error))
 
         return self.model
 
@@ -121,6 +135,7 @@ class FGSMtraining(BaseDefense):
         """
         self.model.train()
         correct = 0
+        train_loss = 0
         bs = train_loader.batch_size
 
         for batch_idx, (data, target) in enumerate(train_loader):
@@ -135,16 +150,18 @@ class FGSMtraining(BaseDefense):
 
             loss.backward()
             optimizer.step()
+            train_loss += loss.item()
 
             pred = output.argmax(dim = 1, keepdim = True)
             correct += pred.eq(target.view_as(pred)).sum().item()
 
             #print every 10
             if batch_idx % 10 == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tAccuracy:{:.2f}%'.format(
-                    epoch, batch_idx * len(data), len(train_loader.dataset),
-                       100. * batch_idx / len(train_loader), loss.item(), 100 * correct/(10*bs)))
+                #print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tAccuracy:{:.2f}%'.format(
+                #    epoch, batch_idx * len(data), len(train_loader.dataset),
+                #       100. * batch_idx / len(train_loader), loss.item(), 100 * correct/(10*bs)))
                 correct = 0
+        return train_loss
 
 
     def test(self, model, device, test_loader):
@@ -182,16 +199,17 @@ class FGSMtraining(BaseDefense):
             pred_adv = output_adv.argmax(dim = 1, keepdim = True)  # get the index of the max log-probability
             correct_adv += pred_adv.eq(target.view_as(pred_adv)).sum().item()
 
-        test_loss /= len(test_loader.dataset)
-        test_loss_adv /= len(test_loader.dataset)
+        #test_loss /= len(test_loader.dataset)
+        #test_loss_adv /= len(test_loader.dataset)
 
-        print('\nTest set: Clean loss: {:.3f}, Clean Accuracy: {}/{} ({:.0f}%)\n'.format(
-            test_loss, correct, len(test_loader.dataset),
-            100. * correct / len(test_loader.dataset)))
+        #print('\nTest set: Clean loss: {:.3f}, Clean Accuracy: {}/{} ({:.0f}%)\n'.format(
+        #    test_loss, correct, len(test_loader.dataset),
+        #    100. * correct / len(test_loader.dataset)))
 
-        print('\nTest set: Adv loss: {:.3f}, Adv Accuracy: {}/{} ({:.0f}%)\n'.format(
-            test_loss_adv, correct_adv, len(test_loader.dataset),
-            100. * correct_adv / len(test_loader.dataset)))
+        #print('\nTest set: Adv loss: {:.3f}, Adv Accuracy: {}/{} ({:.0f}%)\n'.format(
+        #    test_loss_adv, correct_adv, len(test_loader.dataset),
+        #    100. * correct_adv / len(test_loader.dataset)))
+        return (test_loss + test_loss_adv)
 
     def adv_data(self, data, output, ep = 0.3, num_steps = 40):
         """Generate adversarial data for training.
@@ -224,4 +242,5 @@ class FGSMtraining(BaseDefense):
 
         loss = F.nll_loss(output, target, reduction = redmode)
         return loss
+
 
