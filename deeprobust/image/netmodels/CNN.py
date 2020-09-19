@@ -16,10 +16,11 @@ class Net(nn.Module):
     """Model counterparts.
     """
 
-    def __init__(self, in_channel1 = 1, out_channel1 = 32, out_channel2 = 64, H = 28, W = 28):
+    def __init__(self, in_channel1 = 1, out_channel1 = 32, out_channel2 = 64, H = 28, W = 28, ensemble_size = 5, t = 0 ):
         super(Net, self).__init__()
         self.H = H
         self.W = W
+        self.ensemble_size = ensemble_size
         self.out_channel2 = out_channel2
 
         ## define two convolutional layers
@@ -33,6 +34,9 @@ class Net(nn.Module):
                                kernel_size = 5,
                                stride = 1,
                                padding = (2,2))
+        
+        seed = [x for x in range(2, 2+ensemble_size)]
+        torch.manual_seed(seed[t])
 
         ## define two linear layers
         self.fc1 = nn.Linear(int(H/4)*int(W/4)* out_channel2, 1024)
@@ -120,8 +124,8 @@ def test(model, device, test_loader):
 
     test_loss /= len(test_loader.dataset)
     
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+    #print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+    #    test_loss, correct, len(test_loader.dataset),
+    #    100. * correct / len(test_loader.dataset)))
     
     return test_loss*len(test_loader.dataset)
